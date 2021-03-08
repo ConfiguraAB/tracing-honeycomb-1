@@ -17,7 +17,9 @@ mod honeycomb;
 mod span_id;
 mod trace_id;
 mod visitor;
+mod sink;
 
+pub use sink::{Sink, HoneycombIO, Stdout};
 pub use honeycomb::HoneycombTelemetry;
 pub use span_id::SpanId;
 pub use trace_id::TraceId;
@@ -26,6 +28,11 @@ pub use tracing_distributed::{TelemetryLayer, TraceCtxError};
 pub use visitor::HoneycombVisitor;
 
 pub(crate) mod deterministic_sampler;
+
+#[cfg(feature = "use_parking_lot")]
+use parking_lot::Mutex;
+#[cfg(not(feature = "use_parking_lot"))]
+use std::sync::Mutex;
 
 /// Register the current span as the local root of a distributed trace.
 ///
@@ -65,10 +72,15 @@ pub fn new_blackhole_telemetry_layer(
 pub fn new_honeycomb_telemetry_layer(
     service_name: &'static str,
     honeycomb_config: libhoney::Config,
-) -> TelemetryLayer<HoneycombTelemetry, SpanId, TraceId> {
+) -> TelemetryLayer<HoneycombTelemetry<HoneycombIO>, SpanId, TraceId> {
+    let sink = libhoney::init(honeycomb_config);
+    // publishing requires &mut so just mutex-wrap it
+    // FIXME: may not be performant, investigate options (eg mpsc)
+    let sink = HoneycombIO(Mutex::new(sink));
+
     TelemetryLayer::new(
         service_name,
-        HoneycombTelemetry::new(honeycomb_config, None),
+        HoneycombTelemetry::new(sink, None),
         move |tracing_id| SpanId { tracing_id },
     )
 }
@@ -92,10 +104,54 @@ pub fn new_honeycomb_telemetry_layer_with_trace_sampling(
     service_name: &'static str,
     honeycomb_config: libhoney::Config,
     sample_rate: u32,
-) -> TelemetryLayer<HoneycombTelemetry, SpanId, TraceId> {
+) -> TelemetryLayer<HoneycombTelemetry<HoneycombIO>, SpanId, TraceId> {
+    let sink = libhoney::init(honeycomb_config);
+    // publishing requires &mut so just mutex-wrap it
+    // FIXME: may not be performant, investigate options (eg mpsc)
+    let sink = HoneycombIO(Mutex::new(sink));
+
     TelemetryLayer::new(
         service_name,
-        HoneycombTelemetry::new(honeycomb_config, Some(sample_rate)),
+        HoneycombTelemetry::new(sink, Some(sample_rate)),
+        move |tracing_id| SpanId { tracing_id },
+    )
+}
+
+/// Construct a TelemetryLayer that publishes telemetry to some sink.
+///
+/// Specialized to the honeycomb.io-specific SpanId and TraceId provided by this crate.
+pub fn new_honeycomb_telemetry_layer_with_sink<S: Sink>(
+    service_name: &'static str,
+    sink: S,
+) -> TelemetryLayer<HoneycombTelemetry<S>, SpanId, TraceId> {
+    TelemetryLayer::new(
+        service_name,
+        HoneycombTelemetry::new(sink, None),
+        move |tracing_id| SpanId { tracing_id },
+    )
+}
+
+/// Construct a TelemetryLayer that publishes telemetry to some sink using the
+/// provided honeycomb config, and sample rate. This function differs from
+/// `new_honeycomb_telemetry_layer_with_sink` and the `sample_rate` on the
+/// `libhoney::Config` there in an important way. `libhoney` samples `Event`
+/// data, which is individual spans on each trace. This means that using the
+/// sampling logic in libhoney may result in missing event data or incomplete
+/// traces. Calling this function provides trace-level sampling, meaning sampling
+/// decisions are based on a modulo of the traceID, and events in a single trace
+/// will not be sampled differently. If the trace is sampled, then all spans
+/// under it will be sent to honeycomb. If a trace is not sampled, no spans or
+/// events under it will be sent.
+///
+/// Specialized to the honeycomb.io-specific SpanId and TraceId provided by this crate.
+pub fn new_honeycomb_telemetry_layer_with_sink_and_trace_sampling<S: Sink>(
+    service_name: &'static str,
+    sink: S,
+    sample_rate: u32,
+) -> TelemetryLayer<HoneycombTelemetry<S>, SpanId, TraceId> {
+    TelemetryLayer::new(
+        service_name,
+        HoneycombTelemetry::new(sink, Some(sample_rate)),
         move |tracing_id| SpanId { tracing_id },
     )
 }
