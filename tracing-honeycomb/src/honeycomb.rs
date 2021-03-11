@@ -48,6 +48,8 @@ impl HoneycombTelemetry {
             // TODO: figure out strategy for handling this (eg report data loss event)
             eprintln!("error sending event to honeycomb, {:?}", err);
         }
+
+        while client.responses().try_recv().is_ok() {}
     }
 
     fn should_report(&self, trace_id: &TraceId) -> bool {
