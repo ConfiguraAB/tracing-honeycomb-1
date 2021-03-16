@@ -1,7 +1,7 @@
 use eaze_tracing_distributed as tracing_distributed;
 
+use crate::reporter::Reporter;
 use crate::visitor::{event_to_values, span_to_values, HoneycombVisitor};
-use crate::sink::Sink;
 use std::collections::HashMap;
 use tracing_distributed::{Event, Span, Telemetry};
 
@@ -9,21 +9,21 @@ use crate::{SpanId, TraceId};
 
 /// Telemetry capability that publishes Honeycomb events and spans to some backend
 #[derive(Debug)]
-pub struct HoneycombTelemetry<T> {
-    sink: T,
+pub struct HoneycombTelemetry<R> {
+    reporter: R,
     sample_rate: Option<u32>,
 }
 
-impl<S: Sink> HoneycombTelemetry<S> {
-    pub(crate) fn new(sink: S, sample_rate: Option<u32>) -> Self {
+impl<R: Reporter> HoneycombTelemetry<R> {
+    pub(crate) fn new(reporter: R, sample_rate: Option<u32>) -> Self {
         HoneycombTelemetry {
-            sink,
+            reporter,
             sample_rate,
         }
     }
 
     fn report_data(&self, data: HashMap<String, libhoney::Value>) {
-        self.sink.report_data(data);
+        self.reporter.report_data(data);
     }
 
     fn should_report(&self, trace_id: &TraceId) -> bool {
@@ -35,7 +35,7 @@ impl<S: Sink> HoneycombTelemetry<S> {
     }
 }
 
-impl<T: Sink> Telemetry for HoneycombTelemetry<T> {
+impl<R: Reporter> Telemetry for HoneycombTelemetry<R> {
     type Visitor = HoneycombVisitor;
     type TraceId = TraceId;
     type SpanId = SpanId;
