@@ -192,7 +192,7 @@ impl<R: Reporter> Builder<R> {
     pub fn build(self) -> TelemetryLayer<HoneycombTelemetry<R>, SpanId, TraceId> {
         TelemetryLayer::new(
             self.service_name,
-            HoneycombTelemetry::new(self.reporter, None),
+            HoneycombTelemetry::new(self.reporter, self.sample_rate),
             move |tracing_id| SpanId { tracing_id },
         )
     }
