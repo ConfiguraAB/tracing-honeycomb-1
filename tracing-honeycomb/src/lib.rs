@@ -135,7 +135,6 @@ pub fn new_honeycomb_telemetry_layer_with_trace_sampling(
 /// [AWS Lambda Instrumentation]: https://docs.honeycomb.io/getting-data-in/integrations/aws/aws-lambda/
 #[derive(Debug)]
 pub struct Builder<R> {
-    config: Option<libhoney::Config>,
     reporter: R,
     sample_rate: Option<u32>,
     service_name: &'static str,
@@ -145,7 +144,6 @@ impl Builder<StdoutReporter> {
     /// Returns a new `Builder` that reports data to stdout
     pub fn new_stdout(service_name: &'static str) -> Self {
         Self {
-            config: None,
             reporter: StdoutReporter,
             sample_rate: None,
             service_name,
@@ -162,7 +160,6 @@ impl Builder<LibhoneyReporter> {
         let reporter = Mutex::new(reporter);
 
         Self {
-            config: None,
             reporter,
             sample_rate: None,
             service_name,
