@@ -11,6 +11,8 @@
 //!
 //! As a tracing layer, `TelemetryLayer` can be composed with other layers to provide stdout logging, filtering, etc.
 
+use rand::{self, Rng};
+
 mod honeycomb;
 mod reporter;
 mod span_id;
@@ -60,7 +62,7 @@ pub fn new_blackhole_telemetry_layer(
     TelemetryLayer::new(
         "honeycomb_blackhole_tracing_layer",
         tracing_distributed::BlackholeTelemetry::default(),
-        move |tracing_id| SpanId { tracing_id },
+        move |tracing_id| SpanId { tracing_id, instance_id: 0 },
     )
 }
 
@@ -75,11 +77,12 @@ pub fn new_honeycomb_telemetry_layer(
     // publishing requires &mut so just mutex-wrap it
     // FIXME: may not be performant, investigate options (eg mpsc)
     let reporter = Mutex::new(reporter);
+    let instance_id: u64 = rand::thread_rng().gen();
 
     TelemetryLayer::new(
         service_name,
         HoneycombTelemetry::new(reporter, None),
-        move |tracing_id| SpanId { tracing_id },
+        move |tracing_id| SpanId { tracing_id, instance_id },
     )
 }
 
@@ -108,11 +111,12 @@ pub fn new_honeycomb_telemetry_layer_with_trace_sampling(
     // publishing requires &mut so just mutex-wrap it
     // FIXME: may not be performant, investigate options (eg mpsc)
     let reporter = Mutex::new(reporter);
+    let instance_id: u64 = rand::thread_rng().gen();
 
     TelemetryLayer::new(
         service_name,
         HoneycombTelemetry::new(reporter, Some(sample_rate)),
-        move |tracing_id| SpanId { tracing_id },
+        move |tracing_id| SpanId { tracing_id, instance_id },
     )
 }
 
@@ -202,10 +206,12 @@ impl<R: Reporter> Builder<R> {
 
     /// Constructs the configured `TelemetryLayer`
     pub fn build(self) -> TelemetryLayer<HoneycombTelemetry<R>, SpanId, TraceId> {
+        let instance_id: u64 = rand::thread_rng().gen();
+
         TelemetryLayer::new(
             self.service_name,
             HoneycombTelemetry::new(self.reporter, self.sample_rate),
-            move |tracing_id| SpanId { tracing_id },
+            move |tracing_id| SpanId { tracing_id, instance_id },
         )
     }
 }
